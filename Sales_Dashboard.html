@@ -390,7 +390,7 @@ function updateOverview(){
     <div class="card stat-card" style="--accent-color:var(--accent3)"><div class="card-title">เฉลี่ยต่อออเดอร์</div><div class="stat-value">${fmtM(avg)}</div><div class="stat-sub">บาท/ออเดอร์</div></div>`;
 
   // Monthly chart - แยก brand+channel
-  const months=[...new Set(DATA.monthly.map(d=>d.m))].sort();
+  const months=[...new Set(DATA.monthly.map(d=>d.month))].sort();
   const activeBrands=brand==='ALL'?['FA','FO','FF']:[brand];
   const activeChannels=channel==='ALL'?['Shopee','Lazada','TikTok','Other']:[channel];
   const datasets=[];
@@ -400,7 +400,7 @@ function updateOverview(){
       const dash=ch==='Lazada'?[5,3]:ch==='TikTok'?[2,2]:ch==='Other'?[8,3]:[];
       datasets.push({
         label:`${b} ${ch}`,
-        data:months.map(m=>{const f=DATA.monthly.find(d=>d.b===b&&d.c===ch&&d.m===m);return f?f.revenue:0;}),
+        data:months.map(m=>{const f=DATA.monthly.find(d=>d.brand===b&&d.channel===ch&&d.month===m);return f?f.revenue:0;}),
         borderColor:CHC[ch]||color,backgroundColor:(CHC[ch]||color)+'22',
         borderWidth:2,fill:false,tension:0.4,
         borderDash:dash,
@@ -523,7 +523,7 @@ function renderDeadstock(brand){
   const totVal=data.reduce((s,d)=>s+(d.stock_value||0),0);
   const color=BC[brand]||'#3b82f6';
   const catMap={};
-  data.forEach(d=>{const c=d.cat||'อื่นๆ';if(!catMap[c])catMap[c]={cat:c,count:0,value:0,qty:0};catMap[c].count++;catMap[c].value+=d.stock_value||0;catMap[c].qty+=d.stock_qty||0;});
+  data.forEach(d=>{const c=d.category||'อื่นๆ';if(!catMap[c])catMap[c]={cat:c,count:0,value:0,qty:0};catMap[c].count++;catMap[c].value+=d.stock_value||0;catMap[c].qty+=d.stock_qty||0;});
   const cats=Object.values(catMap).sort((a,b)=>b.value-a.value);
   const page={brand,shown:50};
   el.innerHTML=`
@@ -549,8 +549,8 @@ function renderDeadstock(brand){
         <table><thead><tr><th>#</th><th>รหัส</th><th>ชื่อสินค้า</th><th>หมวด</th><th>คงเหลือ</th><th>ราคา</th><th>มูลค่าค้าง</th></tr></thead>
         <tbody id="dead-tbody-${brand}">${data.slice(0,50).map((d,i)=>`
           <tr><td class="rank">${i+1}</td><td class="sku">${d.qr_code||'-'}</td>
-          <td style="font-size:11px;max-width:260px">${d.n||'-'}</td>
-          <td><span class="cat-tag" style="background:${CAT_COLORS[d.cat]||'#475569'}22;color:${CAT_COLORS[d.cat]||'#94a3b8'};font-size:10px">${d.cat||'อื่นๆ'}</span></td>
+          <td style="font-size:11px;max-width:260px">${d.short_name||'-'}</td>
+          <td><span class="cat-tag" style="background:${CAT_COLORS[d.category]||'#475569'}22;color:${CAT_COLORS[d.category]||'#94a3b8'};font-size:10px">${d.category||'อื่นๆ'}</span></td>
           <td class="num" style="color:var(--accent2)">${fmt(d.stock_qty)}</td>
           <td class="num">${fmtM(d.price)}</td>
           <td class="dead-value">${fmtM(d.stock_value)}</td></tr>`).join('')}</tbody></table>
@@ -569,8 +569,8 @@ function loadMoreDead(brand,btn){
   const next=page+100;
   document.getElementById('dead-tbody-'+brand).innerHTML+=data.slice(page,next).map((d,i)=>`
     <tr><td class="rank">${page+i+1}</td><td class="sku">${d.qr_code||'-'}</td>
-    <td style="font-size:11px;max-width:260px">${d.n||'-'}</td>
-    <td><span class="cat-tag" style="background:${CAT_COLORS[d.cat]||'#475569'}22;color:${CAT_COLORS[d.cat]||'#94a3b8'};font-size:10px">${d.cat||'อื่นๆ'}</span></td>
+    <td style="font-size:11px;max-width:260px">${d.short_name||'-'}</td>
+    <td><span class="cat-tag" style="background:${CAT_COLORS[d.category]||'#475569'}22;color:${CAT_COLORS[d.category]||'#94a3b8'};font-size:10px">${d.category||'อื่นๆ'}</span></td>
     <td class="num" style="color:var(--accent2)">${fmt(d.stock_qty)}</td>
     <td class="num">${fmtM(d.price)}</td>
     <td class="dead-value">${fmtM(d.stock_value)}</td></tr>`).join('');
