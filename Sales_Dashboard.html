@@ -188,12 +188,23 @@ tr:hover td{background:rgba(59,130,246,0.04);}
   </div>
   <div class="grid-2">
     <div class="card">
-      <div class="section-header"><div class="section-title">🥇 Top 10 - จำนวนขาย</div><span class="section-badge" id="top-qty-badge"></span></div>
+      <div class="section-header">
+        <div class="section-title">🥇 Top สินค้า - จำนวนขาย</div>
+        <span class="section-badge" id="top-qty-badge"></span>
+      </div>
+      <div style="margin-bottom:10px;position:relative">
+        <input id="top-search" type="text" placeholder="🔍 ค้นหาสินค้า..." oninput="filterTopProducts()"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:7px 12px 7px 32px;border-radius:6px;font-size:12px;font-family:inherit;outline:none;box-sizing:border-box;"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:13px;pointer-events:none">🔍</span>
+        <span id="search-clear" onclick="clearSearch()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text3);cursor:pointer;display:none;font-size:14px">✕</span>
+      </div>
       <div class="table-wrap">
         <table id="top-qty-table">
           <thead><tr><th>#</th><th>สินค้า</th><th>หมวด</th><th>จำนวน</th><th>ยอดขาย</th></tr></thead>
           <tbody></tbody>
         </table>
+        <div id="top-search-empty" style="text-align:center;padding:20px;color:var(--text3);font-size:12px;display:none">ไม่พบสินค้าที่ค้นหา</div>
         <div id="top-load-more" style="text-align:center;margin-top:10px;display:none">
           <button onclick="loadMoreTop()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:6px 20px;border-radius:6px;cursor:pointer;font-size:12px">ดูเพิ่มเติม ▼</button>
         </div>
@@ -430,7 +441,29 @@ function renderTopTableRows(products,from,to){
     <td class="num qty">${fmt(p.qty)}</td>
     <td class="num money">${fmtM(p.sale)}</td></tr>`).join('');
 }
-function loadMoreTop(){_topPage+=10;document.querySelector('#top-qty-table tbody').innerHTML=renderTopTableRows(_allProducts,0,_topPage);document.getElementById('top-load-more').style.display=_topPage>=_allProducts.length?'none':'block';}
+function loadMoreTop(){
+  const q=document.getElementById('top-search').value.toLowerCase().trim();
+  const filtered=q?_allProducts.filter(p=>(p.name||'').toLowerCase().includes(q)||(p.sku||'').toLowerCase().includes(q)):_allProducts;
+  _topPage+=10;
+  document.querySelector('#top-qty-table tbody').innerHTML=renderTopTableRows(filtered,0,_topPage);
+  document.getElementById('top-load-more').style.display=_topPage>=filtered.length?'none':'block';
+}
+
+function filterTopProducts(){
+  const q=document.getElementById('top-search').value.toLowerCase().trim();
+  document.getElementById('search-clear').style.display=q?'inline':'none';
+  const filtered=q?_allProducts.filter(p=>(p.name||'').toLowerCase().includes(q)||(p.sku||'').toLowerCase().includes(q)):_allProducts;
+  _topPage=filtered.length>0?Math.min(filtered.length,50):10;
+  document.querySelector('#top-qty-table tbody').innerHTML=filtered.length?renderTopTableRows(filtered,0,_topPage):'';
+  document.getElementById('top-search-empty').style.display=filtered.length===0?'block':'none';
+  document.getElementById('top-load-more').style.display=_topPage<filtered.length?'block':'none';
+  document.getElementById('top-qty-badge').textContent=(q?filtered.length:_allProducts.length)+' สินค้า';
+}
+
+function clearSearch(){
+  document.getElementById('top-search').value='';
+  filterTopProducts();
+}
 
 function renderCatTableRows(cats,from,to){
   return cats.slice(from,to).map((c,i)=>`
@@ -545,7 +578,13 @@ function renderDeadstock(brand){
       <div class="card"><div class="section-header"><div class="section-title">มูลค่าค้างตามหมวด</div></div><div style="height:200px"><canvas id="dead-cat-${brand}"></canvas></div></div>
     </div>
     <div class="card">
-      <div class="section-header"><div class="section-title">รายการ Deadstock</div><span class="section-badge">${data.length} รายการ</span></div>
+      <div class="section-header"><div class="section-title">รายการ Deadstock</div><span class="section-badge" id="dead-badge-${brand}">${data.length} รายการ</span></div>
+      <div style="margin-bottom:10px;position:relative">
+        <input id="dead-search-${brand}" type="text" placeholder="🔍 ค้นหา SKU หรือชื่อสินค้า..." oninput="filterDeadstock('${brand}')"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:7px 12px 7px 12px;border-radius:6px;font-size:12px;font-family:inherit;outline:none;box-sizing:border-box;"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        <span id="dead-clear-${brand}" onclick="clearDeadSearch('${brand}')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text3);cursor:pointer;display:none;font-size:14px">✕</span>
+      </div>
       <div class="table-wrap">
         <table><thead><tr><th>#</th><th>รหัส</th><th>ชื่อสินค้า</th><th>หมวด</th><th>คงเหลือ</th><th>ราคา</th><th>มูลค่าค้าง</th></tr></thead>
         <tbody id="dead-tbody-${brand}">${data.slice(0,50).map((d,i)=>`
@@ -565,18 +604,49 @@ function renderDeadstock(brand){
 }
 
 function loadMoreDead(brand,btn){
+  const q=document.getElementById(`dead-search-${brand}`).value.toLowerCase().trim();
   const data=DATA.deadstock[brand]||[];
+  const filtered=q?data.filter(d=>(d.qr_code||'').toLowerCase().includes(q)||(d.short_name||'').toLowerCase().includes(q)):data;
   const page=parseInt(btn.getAttribute('data-page'));
   const next=page+100;
-  document.getElementById('dead-tbody-'+brand).innerHTML+=data.slice(page,next).map((d,i)=>`
+  document.getElementById('dead-tbody-'+brand).innerHTML+=filtered.slice(page,next).map((d,i)=>`
     <tr><td class="rank">${page+i+1}</td><td class="sku">${d.qr_code||'-'}</td>
     <td style="font-size:11px;max-width:260px">${d.short_name||'-'}</td>
     <td><span class="cat-tag" style="background:${CAT_COLORS[d.category]||'#475569'}22;color:${CAT_COLORS[d.category]||'#94a3b8'};font-size:10px">${d.category||'อื่นๆ'}</span></td>
     <td class="num" style="color:var(--accent2)">${fmt(d.stock_qty)}</td>
     <td class="num">${fmtM(d.price)}</td>
     <td class="dead-value">${fmtM(d.stock_value)}</td></tr>`).join('');
-  if(next>=data.length)btn.parentElement.style.display='none';
-  else{btn.setAttribute('data-page',next);btn.textContent=`ดูเพิ่มเติม (${data.length-next} รายการ) ▼`;}
+  if(next>=filtered.length)btn.parentElement.style.display='none';
+  else{btn.setAttribute('data-page',next);btn.textContent=`ดูเพิ่มเติม (${filtered.length-next} รายการ) ▼`;}
+}
+
+function filterDeadstock(brand){
+  const q=document.getElementById(`dead-search-${brand}`).value.toLowerCase().trim();
+  document.getElementById(`dead-clear-${brand}`).style.display=q?'inline':'none';
+  const data=DATA.deadstock[brand]||[];
+  const filtered=q?data.filter(d=>(d.qr_code||'').toLowerCase().includes(q)||(d.short_name||'').toLowerCase().includes(q)):data;
+  const show=Math.min(50,filtered.length);
+  document.getElementById('dead-badge-'+brand).textContent=(q?filtered.length:data.length)+' รายการ';
+  document.getElementById('dead-tbody-'+brand).innerHTML=filtered.length?filtered.slice(0,show).map((d,i)=>`
+    <tr><td class="rank">${i+1}</td><td class="sku">${d.qr_code||'-'}</td>
+    <td style="font-size:11px;max-width:260px">${d.short_name||'-'}</td>
+    <td><span class="cat-tag" style="background:${CAT_COLORS[d.category]||'#475569'}22;color:${CAT_COLORS[d.category]||'#94a3b8'};font-size:10px">${d.category||'อื่นๆ'}</span></td>
+    <td class="num" style="color:var(--accent2)">${fmt(d.stock_qty)}</td>
+    <td class="num">${fmtM(d.price)}</td>
+    <td class="dead-value">${fmtM(d.stock_value)}</td></tr>`).join(''):'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text3)">ไม่พบสินค้าที่ค้นหา</td></tr>';
+  const loadMoreEl=document.getElementById(`dead-tbody-${brand}`)?.closest('.card')?.querySelector('[data-page]')?.parentElement;
+  if(loadMoreEl){
+    if(filtered.length>show){
+      loadMoreEl.style.display='block';
+      const btn=loadMoreEl.querySelector('button');
+      if(btn){btn.setAttribute('data-page',show);btn.textContent=`ดูเพิ่มเติม (${filtered.length-show} รายการ) ▼`;}
+    } else { loadMoreEl.style.display='none'; }
+  }
+}
+
+function clearDeadSearch(brand){
+  document.getElementById(`dead-search-${brand}`).value='';
+  filterDeadstock(brand);
 }
 
 updateOverview();
