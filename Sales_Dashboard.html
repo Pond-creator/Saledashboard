@@ -230,6 +230,14 @@ tr:hover td{background:rgba(59,130,246,0.04);}
 <option value="2026-08" data-yr="2026">ส.ค. 2026</option>
 </select>
   </div>
+    <div class="card" id="pi-card" style="margin-bottom:16px;border:1px solid #f59e0b;background:linear-gradient(135deg,rgba(245,158,11,0.08) 0%,var(--bg2) 55%)">
+      <div onclick="togglePi()" style="cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span id="pi-arrow" style="color:#f59e0b;font-size:13px">&#9656;</span>
+        <div class="card-title" style="margin-bottom:0;color:#f59e0b">&#128202; คำแนะนำการขาย - Top10 เดือนก่อน ยังขายดีอยู่ไหม</div>
+        <span id="pi-headline" style="font-size:11px;color:var(--text2)"></span>
+      </div>
+      <div id="pi-body" style="display:none;margin-top:12px"></div>
+    </div>
   <div class="card" style="margin-bottom:16px">
       <div class="section-header"><div class="section-title">📂 หมวดหมู่ขายดี</div><span class="section-badge" id="cat-badge"></span></div>
       <div class="table-wrap">
@@ -1109,7 +1117,183 @@ function renderTopProducts(){
   });
   // sync กราฟเจาะสินค้า ให้ตามตัวกรองปี/แบรนด์/ช่องทางที่เพิ่งเปลี่ยน
   filterProdTrend();
+  try{ renderProdInsight(); }catch(e){ console.warn('renderProdInsight:',e); }
 }
+
+// ====== คำแนะนำการขาย: Top10 เดือนก่อน ยังขายดีอยู่ไหม + สรุปหมวด ======
+// อ่านอย่างเดียวจาก DATA.sales_detail ไม่แตะ logic ยอดขาย - ตามตัวกรอง tp-year/brand/channel/period
+(function(){
+  var _open=false, MIN_Q=10;
+  function pad(n){return n<10?'0'+n:''+n;}
+  function lastDay(ym){return new Date(+ym.slice(0,4), +ym.slice(5,7), 0).getDate();}
+  function prevYM(ym){var y=+ym.slice(0,4), m=+ym.slice(5,7)-1; if(m===0){m=12;y--;} return y+'-'+pad(m);}
+  function thYM(ym){return ym.slice(5,7)+'/'+ym.slice(0,4);}
+  function col(v){return v>0?'#22c55e':(v<0?'#ef4444':'var(--text3)');}
+  function arr(v){return v>0?'\u25B2':(v<0?'\u25BC':'=');}
+  function pct(cur,prv){ return prv?((cur-prv)/prv*100):null; }
+  function pctTxt(cur,prv){
+    if(cur<MIN_Q&&prv<MIN_Q) return '';
+    var v=pct(cur,prv); if(v===null) return '';
+    return ' ('+(v>0?'+':'')+v.toFixed(0)+'%)';
+  }
+  function agg(rows,keyer){
+    var m={};
+    rows.forEach(function(d){
+      var k=keyer(d);
+      if(!m[k]) m[k]={key:k,sku:d.s||'',name:d.n||'',cat:d.cat||'\u0e2d\u0e37\u0e48\u0e19\u0e46',qty:0,sale:0};
+      m[k].qty+=d.q||0; m[k].sale+=d.r||0;
+    });
+    return m;
+  }
+  function skuKey(d){ return (d.s&&d.s!=='nan')?d.s:('__'+(d.n||'').substring(0,30)); }
+  function catKey(d){ return d.cat||'\u0e2d\u0e37\u0e48\u0e19\u0e46'; }
+
+  window.togglePi=function(){
+    _open=!_open;
+    document.getElementById('pi-body').style.display=_open?'':'none';
+    document.getElementById('pi-arrow').innerHTML=_open?'\u25BE':'\u25B8';
+  };
+
+  window.renderProdInsight=function(){
+    var head=document.getElementById('pi-headline'), body=document.getElementById('pi-body');
+    if(!head||!body) return;
+    var year=document.getElementById('tp-year').value;
+    var brand=document.getElementById('tp-brand').value;
+    var channel=document.getElementById('tp-channel').value;
+    var period=document.getElementById('tp-period').value;
+    var scope=DATA.sales_detail.filter(function(d){
+      return (brand==='ALL'||d.b===brand)&&(channel==='ALL'||d.c===channel);
+    });
+    var cur=(period!=='all')?period:null;
+    if(!cur){
+      var yms=[];
+      scope.forEach(function(d){
+        if(!d.d) return;
+        if(year&&year!=='ALL'&&d.y!==+year) return;
+        var ym=d.d.slice(0,7); if(yms.indexOf(ym)<0) yms.push(ym);
+      });
+      yms.sort(); cur=yms.length?yms[yms.length-1]:null;
+    }
+    if(!cur){ head.textContent='\u2014 \u0e44\u0e21\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e43\u0e19\u0e15\u0e31\u0e27\u0e01\u0e23\u0e2d\u0e07\u0e19\u0e35\u0e49'; body.innerHTML=''; return; }
+    var prv=prevYM(cur);
+
+    // เดือนยังไม่จบ -> เทียบวันต่อวัน
+    var md=(DATA.meta&&DATA.meta.max_date)?DATA.meta.max_date:'';
+    var partial=false, cut=31;
+    if(md && md.slice(0,7)===cur){
+      var day=+md.slice(8,10);
+      if(day<lastDay(cur)){ partial=true; cut=day; }
+    }
+    function pick(ym){
+      return scope.filter(function(d){
+        if(!d.d||d.d.slice(0,7)!==ym) return false;
+        return partial ? (+d.d.slice(8,10))<=cut : true;
+      });
+    }
+    var rowsC=pick(cur), rowsP=pick(prv);
+    var sumC=rowsC.reduce(function(a,d){return a+(d.r||0);},0);
+    var sumP=rowsP.reduce(function(a,d){return a+(d.r||0);},0);
+    var qC=rowsC.reduce(function(a,d){return a+(d.q||0);},0);
+    var rangeTxt=partial?(' (1\u2013'+cut+')'):'';
+
+    var note='';
+    if(partial) note+='<div style="padding:8px 10px;margin-bottom:10px;border-radius:6px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.45);font-size:11px;color:#fbbf24">'
+      +'\u26A0\uFE0F <b>\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e40\u0e14\u0e37\u0e2d\u0e19 '+thYM(cur)+' \u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e04\u0e23\u0e1a\u0e40\u0e14\u0e37\u0e2d\u0e19</b> (\u0e16\u0e36\u0e07\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48 '+cut+' = '+cut+' \u0e08\u0e32\u0e01 '+lastDay(cur)+' \u0e27\u0e31\u0e19) \u00B7 '
+      +'\u0e17\u0e38\u0e01\u0e15\u0e31\u0e27\u0e40\u0e25\u0e02\u0e40\u0e17\u0e35\u0e22\u0e1a\u0e41\u0e1a\u0e1a <b>\u0e27\u0e31\u0e19\u0e15\u0e48\u0e2d\u0e27\u0e31\u0e19</b> \u0e41\u0e25\u0e49\u0e27 (1\u2013'+cut+' \u0e40\u0e17\u0e35\u0e22\u0e1a 1\u2013'+cut+' \u0e02\u0e2d\u0e07\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e01\u0e48\u0e2d\u0e19) \u00B7 \u0e22\u0e31\u0e07\u0e21\u0e35\u0e2d\u0e2d\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e04\u0e49\u0e32\u0e07\u0e2a\u0e48\u0e07 \u0e22\u0e2d\u0e14\u0e08\u0e30\u0e02\u0e22\u0e31\u0e1a\u0e02\u0e36\u0e49\u0e19\u0e2d\u0e35\u0e01</div>';
+    if(qC>0 && qC<30) note+='<div style="padding:6px 10px;margin-bottom:10px;border-radius:6px;background:rgba(148,163,184,0.10);font-size:11px;color:var(--text3)">'
+      +'\u2139\uFE0F \u0e15\u0e31\u0e27\u0e01\u0e23\u0e2d\u0e07\u0e19\u0e35\u0e49\u0e21\u0e35\u0e22\u0e2d\u0e14\u0e02\u0e32\u0e22\u0e23\u0e27\u0e21\u0e41\u0e04\u0e48 '+fmt(qC)+' \u0e0a\u0e34\u0e49\u0e19 \u2014 % \u0e08\u0e30\u0e41\u0e01\u0e27\u0e48\u0e07\u0e41\u0e23\u0e07 \u0e14\u0e39\u0e40\u0e1b\u0e47\u0e19\u0e41\u0e19\u0e27\u0e42\u0e19\u0e49\u0e21\u0e04\u0e23\u0e48\u0e32\u0e27\u0e46 \u0e40\u0e17\u0e48\u0e32\u0e19\u0e31\u0e49\u0e19</div>';
+
+    if(!rowsP.length){
+      head.innerHTML='<span style="color:var(--text3)">\u0e40\u0e14\u0e37\u0e2d\u0e19 '+thYM(cur)+' \u00B7 \u0e44\u0e21\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e40\u0e14\u0e37\u0e2d\u0e19 '+thYM(prv)+' \u0e43\u0e2b\u0e49\u0e40\u0e17\u0e35\u0e22\u0e1a</span>';
+      body.innerHTML=note+'<div style="padding:14px;text-align:center;font-size:12px;color:var(--text3);border:1px dashed var(--border);border-radius:8px">'
+        +'\u26D4 <b>\u0e44\u0e21\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e0a\u0e48\u0e27\u0e07\u0e40\u0e1b\u0e23\u0e35\u0e22\u0e1a\u0e40\u0e17\u0e35\u0e22\u0e1a</b><br>\u0e44\u0e21\u0e48\u0e21\u0e35\u0e22\u0e2d\u0e14\u0e02\u0e32\u0e22\u0e40\u0e14\u0e37\u0e2d\u0e19 '+thYM(prv)+' \u0e43\u0e19\u0e15\u0e31\u0e27\u0e01\u0e23\u0e2d\u0e07\u0e19\u0e35\u0e49 \u0e08\u0e36\u0e07\u0e22\u0e31\u0e07\u0e40\u0e17\u0e35\u0e22\u0e1a\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49 (\u0e44\u0e21\u0e48\u0e21\u0e35\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25 \u2260 \u0e22\u0e2d\u0e14\u0e40\u0e1b\u0e47\u0e19\u0e28\u0e39\u0e19\u0e22\u0e4c)</div>';
+      return;
+    }
+
+    // ===== ตั้งจาก Top10 เดือนก่อน =====
+    var mapC=agg(rowsC,skuKey), mapP=agg(rowsP,skuKey);
+    var listC=Object.keys(mapC).map(function(k){return mapC[k];}).sort(function(a,b){return b.qty-a.qty;});
+    var rankC={}; listC.forEach(function(o,i){rankC[o.key]=i+1;});
+    var base=Object.keys(mapP).map(function(k){return mapP[k];}).sort(function(a,b){return b.qty-a.qty;}).slice(0,10);
+
+    var nGone=0,nDown=0,nOk=0, baseQP=0,baseQC=0, baseSP=0,baseSC=0;
+    var rows=base.map(function(o,i){
+      var c=mapC[o.key], cq=c?c.qty:0, cs=c?c.sale:0;
+      var dq=cq-o.qty;
+      baseQP+=o.qty; baseQC+=cq; baseSP+=o.sale; baseSC+=cs;
+      var st,stc;
+      if(cq===0){ nGone++; st='\uD83D\uDD34 \u0e2b\u0e32\u0e22\u0e44\u0e1b\u0e40\u0e25\u0e22'; stc='#ef4444'; }
+      else if(dq<0){ nDown++; st='\uD83D\uDFE0 \u0e22\u0e2d\u0e14\u0e15\u0e01'; stc='#f59e0b'; }
+      else { nOk++; st='\uD83D\uDFE2 \u0e22\u0e31\u0e07\u0e14\u0e35'; stc='#22c55e'; }
+      var rk=rankC[o.key];
+      return '<tr><td class="rank">'+(i+1)+'</td>'
+        +'<td><div style="font-size:11px">'+(o.name||('\u2753 '+o.sku))+'</div>'
+        +'<div style="font-size:10px;color:var(--text3)">'+(o.sku||'-')+'</div></td>'
+        +'<td><span class="cat-tag" style="background:'+((CAT_COLORS[o.cat]||'#475569')+'22')+';color:'+(CAT_COLORS[o.cat]||'#94a3b8')+';font-weight:600">'+o.cat+'</span></td>'
+        +'<td class="num qty">'+fmt(o.qty)+'</td>'
+        +'<td class="num" style="color:'+(cq?'var(--text)':'#ef4444')+'">'+fmt(cq)+'</td>'
+        +'<td class="num" style="color:'+col(dq)+'">'+arr(dq)+' '+fmt(Math.abs(dq))+pctTxt(cq,o.qty)+'</td>'
+        +'<td class="num" style="font-size:10px;color:var(--text3)">'+(rk?('\u2192 \u0e2d\u0e31\u0e19\u0e14\u0e31\u0e1a '+rk):'\u2014')+'</td>'
+        +'<td style="font-size:10px;color:'+stc+';white-space:nowrap">'+st+'</td></tr>';
+    }).join('');
+
+    var dBaseS=baseSC-baseSP, pBaseS=pct(baseSC,baseSP);
+
+    // ===== สรุปหมวด (ทุกสินค้า ไม่ใช่แค่ Top10) =====
+    var cC=agg(rowsC,catKey), cP=agg(rowsP,catKey);
+    var allCats={}; Object.keys(cC).forEach(function(k){allCats[k]=1;}); Object.keys(cP).forEach(function(k){allCats[k]=1;});
+    var catList=Object.keys(allCats).map(function(k){
+      var a=cP[k]?cP[k].sale:0, b=cC[k]?cC[k].sale:0;
+      return {cat:k, p:a, c:b, d:b-a, pc:pct(b,a)};
+    }).sort(function(x,y){return x.d-y.d;});
+    var downs=catList.filter(function(x){return x.d<0;}).slice(0,5);
+    var ups=catList.filter(function(x){return x.d>0;}).sort(function(x,y){return y.d-x.d;}).slice(0,3);
+    function catRow(x){
+      return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:3px 0;border-bottom:1px dashed rgba(148,163,184,0.12)">'
+        +'<span><span class="cat-tag" style="background:'+((CAT_COLORS[x.cat]||'#475569')+'22')+';color:'+(CAT_COLORS[x.cat]||'#94a3b8')+';font-weight:600">'+x.cat+'</span></span>'
+        +'<span style="color:var(--text3)">'+fmtM(x.p)+' \u2192 '+fmtM(x.c)+'</span>'
+        +'<span style="color:'+col(x.d)+';white-space:nowrap;min-width:96px;text-align:right">'+arr(x.d)+' '+fmtM(Math.abs(x.d))+(x.pc===null?'':' ('+(x.d>0?'+':'')+x.pc.toFixed(0)+'%)')+'</span></div>';
+    }
+    var catHtml='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">'
+      +'<div style="flex:1;min-width:260px;padding:10px;border-radius:6px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.28)">'
+        +'<div style="font-size:11px;color:#f87171;font-weight:600;margin-bottom:6px">\uD83D\uDCC9 \u0e2b\u0e21\u0e27\u0e14\u0e17\u0e35\u0e48\u0e22\u0e2d\u0e14\u0e2b\u0e32\u0e22\u0e44\u0e1b\u0e21\u0e32\u0e01\u0e2a\u0e38\u0e14</div>'
+        +(downs.length?downs.map(catRow).join(''):'<div style="font-size:11px;color:var(--text3)">\u0e44\u0e21\u0e48\u0e21\u0e35\u0e2b\u0e21\u0e27\u0e14\u0e44\u0e2b\u0e19\u0e22\u0e2d\u0e14\u0e15\u0e01</div>')+'</div>'
+      +'<div style="flex:1;min-width:260px;padding:10px;border-radius:6px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.28)">'
+        +'<div style="font-size:11px;color:#4ade80;font-weight:600;margin-bottom:6px">\uD83D\uDCC8 \u0e2b\u0e21\u0e27\u0e14\u0e17\u0e35\u0e48\u0e21\u0e32\u0e0a\u0e48\u0e27\u0e22\u0e14\u0e36\u0e07\u0e22\u0e2d\u0e14</div>'
+        +(ups.length?ups.map(catRow).join(''):'<div style="font-size:11px;color:var(--text3)">\u0e44\u0e21\u0e48\u0e21\u0e35\u0e2b\u0e21\u0e27\u0e14\u0e44\u0e2b\u0e19\u0e22\u0e2d\u0e14\u0e02\u0e36\u0e49\u0e19</div>')+'</div></div>';
+
+    // ===== หัวข้อย่อ =====
+    var dS=sumC-sumP, pS=pct(sumC,sumP);
+    head.innerHTML='Top10 <b>'+thYM(prv)+'</b> \u2192 '+thYM(cur)
+      +' \u00B7 <span style="color:#22c55e">\uD83D\uDFE2'+nOk+'</span> <span style="color:#f59e0b">\uD83D\uDFE0'+nDown+'</span> <span style="color:#ef4444">\uD83D\uDD34'+nGone+'</span>'
+      +' \u00B7 \u0e01\u0e25\u0e38\u0e48\u0e21\u0e19\u0e35\u0e49 <span style="color:'+col(dBaseS)+'">'+arr(dBaseS)+' '+(pBaseS===null?'-':Math.abs(pBaseS).toFixed(1)+'%')+'</span>'
+      +(partial?' <span style="color:#fbbf24">\u00B7 \u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e08\u0e1a\u0e40\u0e14\u0e37\u0e2d\u0e19</span>':'');
+
+    body.innerHTML=note
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">'
+      +'<div style="flex:1;min-width:170px;padding:8px 10px;background:var(--bg3);border-radius:6px">'
+        +'<div style="font-size:10px;color:var(--text3)">\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21\u0e17\u0e31\u0e49\u0e07\u0e40\u0e14\u0e37\u0e2d\u0e19 '+thYM(cur)+rangeTxt+'</div>'
+        +'<div style="font-size:15px;font-weight:700">'+fmtM(sumC)+'</div>'
+        +'<div style="font-size:10px;color:'+col(dS)+'">'+arr(dS)+' '+fmtM(Math.abs(dS))+(pS===null?'':' ('+(dS>0?'+':'')+pS.toFixed(1)+'%)')+' \u0e40\u0e17\u0e35\u0e22\u0e1a '+thYM(prv)+'</div></div>'
+      +'<div style="flex:1;min-width:170px;padding:8px 10px;background:var(--bg3);border-radius:6px">'
+        +'<div style="font-size:10px;color:var(--text3)">\u0e22\u0e2d\u0e14\u0e08\u0e32\u0e01 Top10 \u0e40\u0e14\u0e37\u0e2d\u0e19\u0e01\u0e48\u0e2d\u0e19 (10 \u0e15\u0e31\u0e27\u0e19\u0e35\u0e49)</div>'
+        +'<div style="font-size:15px;font-weight:700">'+fmtM(baseSC)+'</div>'
+        +'<div style="font-size:10px;color:'+col(dBaseS)+'">'+arr(dBaseS)+' '+fmtM(Math.abs(dBaseS))+(pBaseS===null?'':' ('+(dBaseS>0?'+':'')+pBaseS.toFixed(1)+'%)')+' \u0e08\u0e32\u0e01 '+fmtM(baseSP)+'</div></div>'
+      +'<div style="flex:1;min-width:170px;padding:8px 10px;background:var(--bg3);border-radius:6px">'
+        +'<div style="font-size:10px;color:var(--text3)">\u0e08\u0e33\u0e19\u0e27\u0e19\u0e0a\u0e34\u0e49\u0e19 Top10 \u0e01\u0e25\u0e38\u0e48\u0e21\u0e19\u0e35\u0e49</div>'
+        +'<div style="font-size:15px;font-weight:700">'+fmt(baseQP)+' \u2192 '+fmt(baseQC)+'</div>'
+        +'<div style="font-size:10px;color:'+col(baseQC-baseQP)+'">'+arr(baseQC-baseQP)+' '+fmt(Math.abs(baseQC-baseQP))+' \u0e0a\u0e34\u0e49\u0e19</div></div>'
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--text2);margin-bottom:6px">\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32\u0e17\u0e35\u0e48\u0e02\u0e32\u0e22\u0e14\u0e35 10 \u0e2d\u0e31\u0e19\u0e14\u0e31\u0e1a\u0e02\u0e2d\u0e07\u0e40\u0e14\u0e37\u0e2d\u0e19 <b>'+thYM(prv)+'</b>'+rangeTxt+' \u0e40\u0e14\u0e37\u0e2d\u0e19\u0e19\u0e35\u0e49\u0e40\u0e1b\u0e47\u0e19\u0e22\u0e31\u0e07\u0e44\u0e07</div>'
+      +'<div style="overflow-x:auto"><table style="width:100%"><thead><tr>'
+      +'<th style="width:34px">#</th><th>\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32</th><th>\u0e2b\u0e21\u0e27\u0e14</th>'
+      +'<th class="num">'+thYM(prv)+'</th><th class="num">'+thYM(cur)+'</th><th class="num">\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19</th>'
+      +'<th class="num">\u0e2d\u0e31\u0e19\u0e14\u0e31\u0e1a\u0e40\u0e14\u0e37\u0e2d\u0e19\u0e19\u0e35\u0e49</th><th>\u0e2a\u0e23\u0e38\u0e1b</th>'
+      +'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+      +catHtml
+      +'<div style="font-size:10px;color:var(--text3);margin-top:8px">* \u0e2a\u0e23\u0e38\u0e1b\u0e2b\u0e21\u0e27\u0e14\u0e19\u0e31\u0e1a\u0e08\u0e32\u0e01\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32\u0e17\u0e38\u0e01\u0e15\u0e31\u0e27 \u0e44\u0e21\u0e48\u0e43\u0e0a\u0e48\u0e40\u0e09\u0e1e\u0e32\u0e30 Top10 \u00B7 % \u0e41\u0e2a\u0e14\u0e07\u0e40\u0e21\u0e37\u0e48\u0e2d\u0e22\u0e2d\u0e14\u0e1d\u0e31\u0e48\u0e07\u0e43\u0e14\u0e1d\u0e31\u0e48\u0e07\u0e2b\u0e19\u0e36\u0e48\u0e07 \u2265 '+MIN_Q+' \u0e0a\u0e34\u0e49\u0e19 \u00B7 \u0e08\u0e31\u0e14\u0e2d\u0e31\u0e19\u0e14\u0e31\u0e1a\u0e14\u0e49\u0e27\u0e22\u0e08\u0e33\u0e19\u0e27\u0e19\u0e0a\u0e34\u0e49\u0e19</div>';
+  };
+})();
 
 // ====== PRICE RANGE ======
 let pChart=null,curPBrand='ALL';
